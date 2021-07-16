@@ -21,7 +21,6 @@ class TabBrushes {
 				Context.brush = new BrushSlot();
 				Project.brushes.push(Context.brush);
 				MakeMaterial.parseBrush();
-				Context.parseBrushInputs();
 				UINodes.inst.hwnd.redraws = 2;
 			}
 			if (ui.button(tr("Import"))) {
@@ -80,6 +79,7 @@ class TabBrushes {
 						// App.dragBrush = Context.brush;
 					}
 					if (ui.isHovered && ui.inputReleasedR) {
+						Context.selectBrush(i);
 						var add = Project.brushes.length > 1 ? 1 : 0;
 						UIMenu.draw(function(ui: Zui) {
 							//var b = Project.brushes[i];

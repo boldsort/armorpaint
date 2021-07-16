@@ -25,9 +25,8 @@ class MakePaint {
 			color_attachments:
 				Context.tool == ToolColorId ? ["RGBA32"] :
 				(Context.tool == ToolPicker && Context.pickPosNor) ? ["RGBA128", "RGBA128"] :
-				(Context.tool == ToolPicker && Context.layerIsMask) ? ["R8", "RGBA32", "RGBA32"] :
 				Context.tool == ToolPicker ? ["RGBA32", "RGBA32", "RGBA32"] :
-					[Context.layerIsMask ? "R8" : "RGBA32", "RGBA32", "RGBA32", "R8"]
+					["RGBA32", "RGBA32", "RGBA32", "R8"]
 		});
 
 		con_paint.data.color_writes_red = [true, true, true, true];
@@ -74,7 +73,7 @@ class MakePaint {
 
 		vert.write('gl_Position = vec4(tpos, 0.0, 1.0);');
 
-		var decalLayer = Context.layer.fill_layer != null && Context.layer.uvType == UVProject && !Context.layerIsMask;
+		var decalLayer = Context.layer.fill_layer != null && Context.layer.uvType == UVProject;
 		if (decalLayer) {
 			vert.add_uniform('mat4 WVP', '_decalLayerMatrix');
 		}
@@ -303,7 +302,7 @@ class MakePaint {
 
 		frag.write('if (opacity == 0.0) discard;');
 
-		if (Context.tool == ToolParticle) { // particle mask
+		if (Context.tool == ToolParticle) { // Particle mask
 			frag.add_uniform('sampler2D texparticle', '_texparticle');
 			#if (kha_direct3d11 || kha_direct3d12 || kha_metal || kha_vulkan)
 			frag.write('float str = textureLod(texparticle, sp.xy, 0.0).r;');
@@ -311,7 +310,7 @@ class MakePaint {
 			frag.write('float str = textureLod(texparticle, vec2(sp.x, (1.0 - sp.y)), 0.0).r;');
 			#end
 		}
-		else { // brush cursor mask
+		else { // Brush cursor mask
 			frag.write('float str = clamp((brushRadius - dist) * brushHardness * 400.0, 0.0, 1.0) * opacity;');
 		}
 
@@ -349,8 +348,9 @@ class MakePaint {
 			frag.write('}');
 		}
 
+		var isMask = Context.layer.isMask();
 		var layered = Context.layer != Project.layers[0];
-		if (layered) {
+		if (layered && !isMask) {
 			if (Context.tool == ToolEraser) {
 				frag.write('fragColor[0] = vec4(mix(sample_undo.rgb, vec3(0.0, 0.0, 0.0), str), sample_undo.a - str);');
 				frag.write('nortan = vec3(0.5, 0.5, 1.0);');
@@ -359,7 +359,7 @@ class MakePaint {
 				frag.write('metallic = 0.0;');
 				frag.write('matid = 0.0;');
 			}
-			else if (decal || Context.brushMaskImage != null) {
+			else if (Context.tool == ToolParticle || decal || Context.brushMaskImage != null) {
 				frag.write('fragColor[0] = vec4(' + MakeMaterial.blendMode(frag, Context.brushBlending, 'sample_undo.rgb', 'basecol', 'str') + ', max(str, sample_undo.a));');
 			}
 			else {
@@ -440,13 +440,16 @@ class MakePaint {
 		}
 
 		// Base color only as mask
-		var isMask = Context.layerIsMask;
 		if (isMask) {
 			// TODO: Apply opacity into base
 			// frag.write('fragColor[0].rgb *= fragColor[0].a;');
+			con_paint.data.color_writes_green[0] = false;
+			con_paint.data.color_writes_blue[0] = false;
+			con_paint.data.color_writes_alpha[0] = false;
 			con_paint.data.color_writes_red[1] = false;
 			con_paint.data.color_writes_green[1] = false;
 			con_paint.data.color_writes_blue[1] = false;
+			con_paint.data.color_writes_alpha[1] = false;
 			con_paint.data.color_writes_red[2] = false;
 			con_paint.data.color_writes_green[2] = false;
 			con_paint.data.color_writes_blue[2] = false;

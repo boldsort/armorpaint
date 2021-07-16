@@ -90,19 +90,19 @@ class TabSwatches {
 						if (Time.time() - Context.selectTime < 0.25) {
 
 							UIMenu.draw(function(ui) {
-								ui.fill(0, 0, ui._w / ui.SCALE(), ui.t.ELEMENT_H * 9, ui.t.SEPARATOR_COL);
 								ui.changed = false;
 								var h = Id.handle();
 								h.color = Context.swatch.base;
 								Context.swatch.base = zui.Ext.colorWheel(ui, h, false, null, false);
-								if (ui.changed) UIMenu.keepOpen = true;
+								if (ui.changed || ui.isTyping) UIMenu.keepOpen = true;
 								if (ui.inputReleased) Context.setSwatch(Context.swatch); // Trigger material preview update
-							}, 3, Std.int(Input.getMouse().x - 200 * ui.SCALE()), Std.int(Input.getMouse().y - 250 * ui.SCALE()));
+							}, 10, Std.int(Input.getMouse().x - 200 * ui.SCALE()), Std.int(Input.getMouse().y - 250 * ui.SCALE()));
 						}
 
 						Context.selectTime = Time.time();
 					}
 					if (ui.isHovered && ui.inputReleasedR) {
+						Context.setSwatch(Project.raw.swatches[i]);
 						var add = Project.raw.swatches.length > 1 ? 1 : 0;
 						UIMenu.draw(function(ui: Zui) {
 							ui.text(tr("Swatch"), Right, ui.t.HIGHLIGHT_COL);

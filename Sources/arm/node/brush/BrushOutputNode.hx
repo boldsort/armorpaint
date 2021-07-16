@@ -35,7 +35,9 @@ class BrushOutputNode extends LogicNode {
 			input5 = inputs[5].get();
 			input6 = inputs[6].get();
 		}
-		catch (_) { return; }
+		catch (_) {
+			return;
+		}
 
 		Context.paintVec = input0;
 		Context.brushNodesRadius = input1;
@@ -77,7 +79,6 @@ class BrushOutputNode extends LogicNode {
 	}
 
 	override function run(from: Int) {
-
 		var left = 0.0;
 		var right = 1.0;
 		if (Context.paint2d) {
@@ -92,10 +93,10 @@ class BrushOutputNode extends LogicNode {
 		}
 
 		// Do not paint over fill layer
-		var fillLayer = Context.layer.fill_layer != null && Context.tool != ToolPicker && !Context.layerIsMask;
+		var fillLayer = Context.layer.fill_layer != null && Context.tool != ToolPicker;
 
 		// Do not paint over groups
-		var groupLayer = Context.layer.getChildren() != null;
+		var groupLayer = Context.layer.isGroup();
 
 		// Paint bounds
 		if (Context.paintVec.x > left &&

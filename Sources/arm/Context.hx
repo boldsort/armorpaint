@@ -33,7 +33,6 @@ class Context {
 
 	public static var material: MaterialSlot;
 	public static var layer: LayerSlot;
-	public static var layerIsMask = false; // Mask selected for active layer
 	public static var brush: BrushSlot;
 	public static var font: FontSlot;
 	public static var texture: TAsset = null;
@@ -220,6 +219,7 @@ class Context {
 	public static var symX = false;
 	public static var symY = false;
 	public static var symZ = false;
+	public static var blurDirectional = false;
 	public static var showCompass = true;
 	public static var fillTypeHandle = new Handle();
 	public static var projectType = ModelRoundedCube;
@@ -252,8 +252,6 @@ class Context {
 	public static var vxaoOffset = 1.5;
 	public static var vxaoAperture = 1.2;
 	public static var textureExportPath = "";
-	public static var lastCombo: Handle = null;
-	public static var lastTooltip: Image = null;
 	public static var lastStatusPosition = 0;
 	public static var cameraControls = ControlsOrbit;
 	public static var dragDestination = 0;
@@ -290,7 +288,6 @@ class Context {
 		if (Project.brushes.indexOf(b) == -1) return;
 		brush = b;
 		MakeMaterial.parseBrush();
-		Context.parseBrushInputs();
 		UISidebar.inst.hwnd1.redraws = 2;
 		UINodes.inst.hwnd.redraws = 2;
 	}
@@ -318,10 +315,14 @@ class Context {
 		});
 	}
 
-	public static function setLayer(l: LayerSlot, isMask = false) {
-		if (l == layer && layerIsMask == isMask) return;
+	public static function selectLayer(i: Int) {
+		if (Project.layers.length <= i) return;
+		setLayer(Project.layers[i]);
+	}
+
+	public static function setLayer(l: LayerSlot) {
+		if (l == layer) return;
 		layer = l;
-		layerIsMask = isMask;
 		UIHeader.inst.headerHandle.redraws = 2;
 
 		var current = @:privateAccess kha.graphics2.Graphics.current;
@@ -359,6 +360,11 @@ class Context {
 			ParticleUtil.initParticle();
 			MakeMaterial.parseParticleMaterial();
 		}
+
+		#if krom_ios
+		// No hover on iPad, decals are painted by pen release
+		Config.raw.brush_live = decal;
+		#end
 	}
 
 	public static function selectPaintObject(o: MeshObject) {
@@ -366,7 +372,7 @@ class Context {
 		for (p in Project.paintObjects) p.skip_context = "paint";
 		paintObject = o;
 
-		var mask = layer.objectMask;
+		var mask = layer.getObjectMask();
 		if (Context.layerFilterUsed()) mask = Context.layerFilter;
 
 		if (mergedObject == null || mask > 0) {
@@ -422,7 +428,7 @@ class Context {
 		for (f in BoxPreferences.filesPlugin) {
 			if (f.startsWith("import_") && f.indexOf(ext) >= 0) {
 				Config.enablePlugin(f);
-				Log.info(f + " " + tr("plugin enabled"));
+				Console.info(f + " " + tr("plugin enabled"));
 				return true;
 			}
 		}
@@ -434,6 +440,6 @@ class Context {
 	}
 
 	public static function objectMaskUsed(): Bool {
-		return layer.objectMask > 0 && layer.objectMask <= Project.paintObjects.length;
+		return layer.getObjectMask() > 0 && layer.getObjectMask() <= Project.paintObjects.length;
 	}
 }

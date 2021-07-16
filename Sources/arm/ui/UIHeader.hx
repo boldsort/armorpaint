@@ -53,9 +53,6 @@ class UIHeader {
 				var occlusionPicked = Math.round(Context.swatch.occlusion * 100) / 100;
 				var roughnessPicked = Math.round(Context.swatch.roughness * 100) / 100;
 				var metallicPicked = Math.round(Context.swatch.metallic * 100) / 100;
-				#if kha_metal
-				ui.text('TODO'); // Skips first draw
-				#end
 
 				var h = Id.handle();
 				h.color.R = baseRPicked;
@@ -85,21 +82,24 @@ class UIHeader {
 			else if (Context.tool == ToolBake) {
 				ui.changed = false;
 
-				var rtBake = Context.bakeType == BakeAO || Context.bakeType == BakeLightmap || Context.bakeType == BakeBentNormal || Context.bakeType == BakeThickness;
-				var baking = false;
-
 				#if (kha_direct3d12 || kha_vulkan)
-				baking = Context.pdirty > 0;
+				var baking = Context.pdirty > 0;
+				var rtBake = Context.bakeType == BakeAO || Context.bakeType == BakeLightmap || Context.bakeType == BakeBentNormal || Context.bakeType == BakeThickness;
 				if (baking && ui.button(tr("Stop"))) {
 					Context.pdirty = 0;
 					Context.rdirty = 2;
 				}
+				#else
+				var baking = false;
+				var rtBake = false;
 				#end
 
 				if (!baking && ui.button(tr("Bake"))) {
 					Context.pdirty = rtBake ? Context.bakeSamples : 1;
 					Context.rdirty = 3;
-					Context.layerPreviewDirty = true;
+					App.notifyOnNextFrame(function() {
+						Context.layerPreviewDirty = true;
+					});
 					UISidebar.inst.hwnd0.redraws = 2;
 					History.pushUndo = true;
 				}
@@ -297,8 +297,12 @@ class UIHeader {
 					var symXHandle = Id.handle({selected: false});
 					var symYHandle = Id.handle({selected: false});
 					var symZHandle = Id.handle({selected: false});
+					#if krom_ios
+					ui._x -= 10 * sc;
+					#else
 					ui._w = Std.int(56 * sc);
 					ui.text(tr("Symmetry"));
+					#end
 					ui._w = Std.int(25 * sc);
 					Context.symX = ui.check(symXHandle, tr("X"));
 					Context.symY = ui.check(symYHandle, tr("Y"));
@@ -306,8 +310,16 @@ class UIHeader {
 					if (symXHandle.changed || symYHandle.changed || symZHandle.changed) {
 						MakeMaterial.parsePaintMaterial();
 					}
-
 					ui._w = _w;
+				}
+
+				if (Context.tool == ToolBlur) {
+					ui._x += 10 * ui.SCALE();
+					var dirHandle = Id.handle({selected: false});
+					Context.blurDirectional = ui.check(dirHandle, tr("Directional"));
+					if (dirHandle.changed) {
+						MakeMaterial.parsePaintMaterial();
+					}
 				}
 			}
 		}

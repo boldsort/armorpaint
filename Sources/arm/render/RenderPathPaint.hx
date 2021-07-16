@@ -4,9 +4,11 @@ import iron.math.Mat4;
 import iron.math.Vec4;
 import iron.system.Input;
 import iron.object.MeshObject;
+import iron.data.SceneFormat;
+import iron.data.MeshData;
 import iron.RenderPath;
 import iron.Scene;
-import arm.util.ViewportUtil;
+import arm.Viewport;
 import arm.ui.UIView2D;
 import arm.ui.UIHeader;
 import arm.ui.UISidebar;
@@ -29,7 +31,6 @@ class RenderPathPaint {
 	static var savedFov = 0.0;
 	static var baking = false;
 	static var _texpaint: RenderTarget;
-	static var _texpaint_mask: RenderTarget;
 	static var _texpaint_nor: RenderTarget;
 	static var _texpaint_pack: RenderTarget;
 	static var _texpaint_undo: RenderTarget;
@@ -112,8 +113,7 @@ class RenderPathPaint {
 	public static function commandsPaint(dilation = true) {
 		var tid = Context.layer.id;
 
-		var paintSpace = UIHeader.inst.worktab.position == SpacePaint || UIHeader.inst.worktab.position == SpaceBake;
-		if (Context.pdirty > 0 && paintSpace) {
+		if (Context.pdirty > 0) {
 			if (Context.tool == ToolParticle) {
 				path.setTarget("texparticle");
 				path.clearTarget(0x00000000);
@@ -173,10 +173,13 @@ class RenderPathPaint {
 					#end
 					path.bindTarget("gbuffer2", "gbuffer2");
 					tid = Context.layer.id;
+					var useLiveLayer = arm.ui.UIHeader.inst.worktab.position == SpaceMaterial;
+					if (useLiveLayer) RenderPathPaint.useLiveLayer(true);
 					path.bindTarget("texpaint" + tid, "texpaint");
 					path.bindTarget("texpaint_nor" + tid, "texpaint_nor");
 					path.bindTarget("texpaint_pack" + tid, "texpaint_pack");
 					path.drawMeshes("paint");
+					if (useLiveLayer) RenderPathPaint.useLiveLayer(false);
 					UIHeader.inst.headerHandle.redraws = 2;
 					UISidebar.inst.hwnd2.redraws = 2;
 
@@ -235,9 +238,7 @@ class RenderPathPaint {
 				}
 				#end
 
-				var isMask = Context.layerIsMask;
-				var texpaint = isMask ? "texpaint_mask" + tid : "texpaint" + tid;
-
+				var texpaint = "texpaint" + tid;
 				if (Context.tool == ToolBake && Context.brushTime == iron.system.Time.delta) {
 					// Clear to black on bake start
 					path.setTarget(texpaint);
@@ -247,8 +248,14 @@ class RenderPathPaint {
 				path.setTarget("texpaint_blend1");
 				path.bindTarget("texpaint_blend0", "tex");
 				path.drawShader("shader_datas/copy_pass/copyR8_pass");
-
-				path.setTarget(texpaint, ["texpaint_nor" + tid, "texpaint_pack" + tid, "texpaint_blend0"]);
+				var isMask = Context.layer.isMask();
+				if (isMask) {
+					var ptid = Context.layer.parent.id;
+					path.setTarget(texpaint, ["texpaint_nor" + ptid, "texpaint_pack" + ptid, "texpaint_blend0"]);
+				}
+				else {
+					path.setTarget(texpaint, ["texpaint_nor" + tid, "texpaint_pack" + tid, "texpaint_blend0"]);
+				}
 				path.bindTarget("_main", "gbufferD");
 				if ((Context.xray || Config.raw.brush_angle_reject) && Config.raw.brush_3d) {
 					path.bindTarget("gbuffer0", "gbuffer0");
@@ -308,25 +315,26 @@ class RenderPathPaint {
 			_texpaint_undo = path.renderTargets.get("texpaint_undo" + hid);
 			_texpaint_nor_undo = path.renderTargets.get("texpaint_nor_undo" + hid);
 			_texpaint_pack_undo = path.renderTargets.get("texpaint_pack_undo" + hid);
-			_texpaint_mask = path.renderTargets.get("texpaint_mask" + tid);
 			_texpaint_nor = path.renderTargets.get("texpaint_nor" + tid);
 			_texpaint_pack = path.renderTargets.get("texpaint_pack" + tid);
 			path.renderTargets.set("texpaint_undo" + hid, path.renderTargets.get("texpaint" + tid));
-			path.renderTargets.set("texpaint_nor_undo" + hid, path.renderTargets.get("texpaint_nor" + tid));
-			path.renderTargets.set("texpaint_pack_undo" + hid, path.renderTargets.get("texpaint_pack" + tid));
 			path.renderTargets.set("texpaint" + tid, path.renderTargets.get("texpaint_live"));
-			if (_texpaint_mask != null) path.renderTargets.set("texpaint_mask" + tid, path.renderTargets.get("texpaint_mask_live"));
-			path.renderTargets.set("texpaint_nor" + tid, path.renderTargets.get("texpaint_nor_live"));
-			path.renderTargets.set("texpaint_pack" + tid, path.renderTargets.get("texpaint_pack_live"));
+			if (Context.layer.isLayer()) {
+				path.renderTargets.set("texpaint_nor_undo" + hid, path.renderTargets.get("texpaint_nor" + tid));
+				path.renderTargets.set("texpaint_pack_undo" + hid, path.renderTargets.get("texpaint_pack" + tid));
+				path.renderTargets.set("texpaint_nor" + tid, path.renderTargets.get("texpaint_nor_live"));
+				path.renderTargets.set("texpaint_pack" + tid, path.renderTargets.get("texpaint_pack_live"));
+			}
 		}
 		else {
 			path.renderTargets.set("texpaint" + tid, _texpaint);
 			path.renderTargets.set("texpaint_undo" + hid, _texpaint_undo);
-			path.renderTargets.set("texpaint_nor_undo" + hid, _texpaint_nor_undo);
-			path.renderTargets.set("texpaint_pack_undo" + hid, _texpaint_pack_undo);
-			if (_texpaint_mask != null) path.renderTargets.set("texpaint_mask" + tid, _texpaint_mask);
-			path.renderTargets.set("texpaint_nor" + tid, _texpaint_nor);
-			path.renderTargets.set("texpaint_pack" + tid, _texpaint_pack);
+			if (Context.layer.isLayer()) {
+				path.renderTargets.set("texpaint_nor_undo" + hid, _texpaint_nor_undo);
+				path.renderTargets.set("texpaint_pack_undo" + hid, _texpaint_pack_undo);
+				path.renderTargets.set("texpaint_nor" + tid, _texpaint_nor);
+				path.renderTargets.set("texpaint_pack" + tid, _texpaint_pack);
+			}
 		}
 		liveLayerLocked = use;
 	}
@@ -347,13 +355,12 @@ class RenderPathPaint {
 
 		if (liveLayer == null) {
 			liveLayer = new arm.data.LayerSlot("_live");
-			liveLayer.createMask(0x00000000);
 		}
 
 		var tid = Context.layer.id;
-		if (Context.layerIsMask) {
-			path.setTarget("texpaint_mask_live");
-			path.bindTarget("texpaint_mask" + tid, "tex");
+		if (Context.layer.isMask()) {
+			path.setTarget("texpaint_live");
+			path.bindTarget("texpaint" + tid, "tex");
 			path.drawShader("shader_datas/copy_pass/copy_pass");
 		}
 		else {
@@ -412,10 +419,9 @@ class RenderPathPaint {
 				return;
 		}
 
-		var fillLayer = Context.layer.fill_layer != null && !Context.layerIsMask;
-		var fillMask = Context.layer.fill_mask != null && Context.layerIsMask;
-		var groupLayer = Context.layer.getChildren() != null;
-		if (!App.uiEnabled || App.isDragging || fillLayer || fillMask || groupLayer) {
+		var fillLayer = Context.layer.fill_layer != null;
+		var groupLayer = Context.layer.isGroup();
+		if (!App.uiEnabled || App.isDragging || fillLayer || groupLayer) {
 			return;
 		}
 
@@ -528,10 +534,10 @@ class RenderPathPaint {
 	}
 
 	static function paintEnabled(): Bool {
-		var fillLayer = Context.layer.fill_layer != null && !Context.layerIsMask;
-		var fillMask = Context.layer.fill_mask != null && Context.layerIsMask;
-		var groupLayer = Context.layer.getChildren() != null;
-		return !fillLayer && !fillMask && !groupLayer && !Context.foregroundEvent;
+		var isPicker = Context.tool == ToolPicker;
+		var fillLayer = Context.layer.fill_layer != null && !isPicker;
+		var groupLayer = Context.layer.isGroup();
+		return !fillLayer && !groupLayer && !Context.foregroundEvent;
 	}
 
 	public static function begin() {
@@ -560,7 +566,7 @@ class RenderPathPaint {
 			var cam = Scene.active.camera;
 			Context.savedCamera.setFrom(cam.transform.local);
 			savedFov = cam.data.raw.fov;
-			ViewportUtil.updateCameraType(CameraPerspective);
+			Viewport.updateCameraType(CameraPerspective);
 			var m = Mat4.identity();
 			m.translate(0, 0, 0.5);
 			cam.transform.setMatrix(m);
@@ -578,7 +584,34 @@ class RenderPathPaint {
 			m2.getInverse(Scene.active.camera.VP);
 			m.multmat(m2);
 
-			planeo = cast Scene.active.getChild(".Plane");
+			var tiled = UIView2D.inst.tiledShow;
+			if (tiled && Scene.active.getChild(".PlaneTiled") == null) {
+				// 3x3 planes
+				var posa = [32767,0,-32767,0,10922,0,-10922,0,10922,0,-32767,0,10922,0,-10922,0,-10922,0,10922,0,-10922,0,-10922,0,-10922,0,10922,0,-32767,0,32767,0,-32767,0,10922,0,10922,0,10922,0,-10922,0,32767,0,-10922,0,10922,0,32767,0,10922,0,10922,0,32767,0,10922,0,10922,0,-10922,0,-10922,0,-32767,0,10922,0,-32767,0,-10922,0,32767,0,-10922,0,10922,0,10922,0,10922,0,-10922,0,-10922,0,-32767,0,-32767,0,-10922,0,-32767,0,-32767,0,10922,0,-32767,0,-10922,0,-10922,0,-10922,0,-32767,0,32767,0,-32767,0,32767,0,-10922,0,10922,0,-10922,0,10922,0,-10922,0,10922,0,10922,0,-10922,0,10922,0,-10922,0,10922,0,-10922,0,32767,0,-32767,0,32767,0,10922,0,10922,0,10922,0,32767,0,-10922,0,32767,0,32767,0,10922,0,32767,0,32767,0,10922,0,32767,0,-10922,0,-10922,0,-10922,0,10922,0,-32767,0,10922,0,32767,0,-10922,0,32767,0,10922,0,10922,0,10922,0,-10922,0,-32767,0,-10922,0,-10922,0,-32767,0,-10922,0,10922,0,-32767,0,10922,0,-10922,0,-10922,0,-10922,0];
+				var nora = [0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767,0,-32767];
+				var texa = [32767,32767,0,0,0,32767,32767,32767,0,0,0,32767,32767,32767,0,0,0,32767,32767,32767,0,0,0,32767,32767,32767,0,0,0,32767,32767,32767,0,0,0,32767,32767,32767,0,0,0,32767,32767,32767,0,0,0,32767,32767,32767,0,0,0,32767,32767,32767,32767,0,0,0,32767,32767,32767,0,0,0,32767,32767,32767,0,0,0,32767,32767,32767,0,0,0,32767,32767,32767,0,0,0,32767,32767,32767,0,0,0,32767,32767,32767,0,0,0,32767,32767,32767,0,0,0,32767,32767,32767,0,0,0];
+				var inda = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53];
+				var raw: TMeshData = {
+					name: ".PlaneTiled",
+					vertex_arrays: [
+						{ attrib: "pos", values: i16(posa), data: "short4norm" },
+						{ attrib: "nor", values: i16(nora), data: "short2norm" },
+						{ attrib: "tex", values: i16(texa), data: "short2norm" }
+					],
+					index_arrays: [
+						{ values: u32(inda), material: 0 }
+					],
+					scale_pos: 1.5,
+					scale_tex: 1.0
+				};
+				new MeshData(raw, function(md: MeshData) {
+					var materials = cast(Scene.active.getChild(".Plane"), MeshObject).materials;
+					var o = Scene.active.addMeshObject(md, materials);
+					o.name = ".PlaneTiled";
+				});
+			}
+
+			planeo = cast Scene.active.getChild(tiled ? ".PlaneTiled" : ".Plane");
 			planeo.visible = true;
 			Context.paintObject = planeo;
 
@@ -725,7 +758,7 @@ class RenderPathPaint {
 			Context.paintObject = painto;
 			Scene.active.camera.transform.setMatrix(Context.savedCamera);
 			Scene.active.camera.data.raw.fov = savedFov;
-			ViewportUtil.updateCameraType(Context.cameraType);
+			Viewport.updateCameraType(Context.cameraType);
 			Scene.active.camera.buildProjection();
 			Scene.active.camera.buildMatrix();
 
@@ -741,10 +774,9 @@ class RenderPathPaint {
 		for (i in 0...Project.layers.length) {
 			var l = Project.layers[i];
 			path.bindTarget("texpaint" + l.id, "texpaint" + l.id);
-			path.bindTarget("texpaint_nor" + l.id, "texpaint_nor" + l.id);
-			path.bindTarget("texpaint_pack" + l.id, "texpaint_pack" + l.id);
-			if (l.texpaint_mask != null) {
-				path.bindTarget("texpaint_mask" + l.id, "texpaint_mask" + l.id);
+			if (l.isLayer()) {
+				path.bindTarget("texpaint_nor" + l.id, "texpaint_nor" + l.id);
+				path.bindTarget("texpaint_pack" + l.id, "texpaint_pack" + l.id);
 			}
 		}
 	}
@@ -761,7 +793,7 @@ class RenderPathPaint {
 			Layers.makeTempImg();
 			var tid = Context.layer.id;
 			if (base) {
-				var texpaint = Context.layerIsMask ? "texpaint_mask" : "texpaint";
+				var texpaint = "texpaint";
 				path.setTarget("temptex0");
 				path.bindTarget(texpaint + tid, "tex");
 				path.drawShader("shader_datas/copy_pass/copy_pass");
@@ -769,7 +801,7 @@ class RenderPathPaint {
 				path.bindTarget("temptex0", "tex");
 				path.drawShader("shader_datas/dilate_pass/dilate_pass");
 			}
-			if (nor_pack && !Context.layerIsMask) {
+			if (nor_pack && !Context.layer.isMask()) {
 				path.setTarget("temptex0");
 				path.bindTarget("texpaint_nor" + tid, "tex");
 				path.drawShader("shader_datas/copy_pass/copy_pass");
@@ -785,5 +817,17 @@ class RenderPathPaint {
 				path.drawShader("shader_datas/dilate_pass/dilate_pass");
 			}
 		}
+	}
+
+	static function u32(ar: Array<Int>): kha.arrays.Uint32Array {
+		var res = new kha.arrays.Uint32Array(ar.length);
+		for (i in 0...ar.length) res[i] = ar[i];
+		return res;
+	}
+
+	static function i16(ar: Array<Int>): kha.arrays.Int16Array {
+		var res = new kha.arrays.Int16Array(ar.length);
+		for (i in 0...ar.length) res[i] = ar[i];
+		return res;
 	}
 }
